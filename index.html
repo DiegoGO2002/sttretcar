@@ -75,6 +75,9 @@
       cursor: pointer;
       border-radius: 5px;
     }
+    .hud button.active {
+      background-color: #FFAA00;
+    }
   </style>
 </head>
 <body>
@@ -84,7 +87,9 @@
     </div>
     <div class="hud">
       <h1>Dinero: $<span id="money">0</span></h1>
-      <button onclick="toggleBuildMode()">Construir/Quitar carretera</button>
+      <button id="addRoadBtn">Agregar carretera</button>
+      <button id="removeRoadBtn">Quitar carretera</button>
+      <button onclick="resetRoads()">Reiniciar carreteras</button>
       <button onclick="mergeCars()">Merge Cars</button>
       <button onclick="upgradeRoad()">Upgrade Road</button>
       <button onclick="increaseIncome()">Income</button>
@@ -98,8 +103,8 @@
 
     let carSpeed = 1;
     let incomePerCar = 1;
-    let money = parseInt(localStorage.getItem('money')) || 1000; // Empieza con 1000 para construir
-    let buildMode = false;
+    let money = parseInt(localStorage.getItem('money')) || 1000; // Empieza con 1000
+    let buildMode = null; // null, "add", "remove"
     let roads = JSON.parse(localStorage.getItem('roads')) || [];
 
     const rows = 100;
@@ -109,8 +114,32 @@
     let isDrawing = false;
     const roadCost = 10;
 
-    // Autos: array de objetos { div, path, stepIndex, position }
-    let cars = [];
+    const addRoadBtn = document.getElementById("addRoadBtn");
+    const removeRoadBtn = document.getElementById("removeRoadBtn");
+
+    // Actualizar estado activo de botones
+    function updateBuildButtons() {
+      addRoadBtn.classList.toggle("active", buildMode === "add");
+      removeRoadBtn.classList.toggle("active", buildMode === "remove");
+    }
+
+    addRoadBtn.onclick = () => {
+      if (buildMode === "add") {
+        buildMode = null;
+      } else {
+        buildMode = "add";
+      }
+      updateBuildButtons();
+    };
+
+    removeRoadBtn.onclick = () => {
+      if (buildMode === "remove") {
+        buildMode = null;
+      } else {
+        buildMode = "remove";
+      }
+      updateBuildButtons();
+    };
 
     function createGrid() {
       grid.innerHTML = "";
@@ -126,25 +155,30 @@
             cell.classList.add("road-cell");
           }
 
-          // Drag & draw para construir o quitar carretera
           cell.addEventListener("mousedown", (e) => {
-            if (buildMode) {
-              toggleRoadCell(cell, x, y);
+            if (buildMode === "add") {
+              addRoadCell(cell, x, y);
+              isDrawing = true;
+              e.preventDefault();
+            } else if (buildMode === "remove") {
+              removeRoadCell(cell, x, y);
               isDrawing = true;
               e.preventDefault();
             }
           });
 
           cell.addEventListener("mouseover", () => {
-            if (buildMode && isDrawing) {
-              toggleRoadCell(cell, x, y);
+            if (isDrawing) {
+              if (buildMode === "add") {
+                addRoadCell(cell, x, y);
+              } else if (buildMode === "remove") {
+                removeRoadCell(cell, x, y);
+              }
             }
           });
 
           cell.addEventListener("mouseup", () => {
-            if (buildMode) {
-              isDrawing = false;
-            }
+            isDrawing = false;
           });
 
           grid.appendChild(cell);
@@ -157,10 +191,8 @@
       });
     }
 
-    function toggleRoadCell(cell, x, y) {
-      const isRoad = cell.classList.contains("road-cell");
-      if (!isRoad) {
-        // Construir carretera solo si tienes dinero suficiente
+    function addRoadCell(cell, x, y) {
+      if (!cell.classList.contains("road-cell")) {
         if (money >= roadCost) {
           cell.classList.add("road-cell");
           roads.push({ x, y });
@@ -169,10 +201,13 @@
           localStorage.setItem('roads', JSON.stringify(roads));
         } else {
           alert("No tienes dinero suficiente para construir carretera ($10 por celda)");
-          isDrawing = false; // para que no siga pintando sin dinero
+          isDrawing = false;
         }
-      } else {
-        // Quitar carretera: devolver dinero y quitar de array
+      }
+    }
+
+    function removeRoadCell(cell, x, y) {
+      if (cell.classList.contains("road-cell")) {
         cell.classList.remove("road-cell");
         roads = roads.filter(r => !(r.x === x && r.y === y));
         money += roadCost;
@@ -181,14 +216,23 @@
       }
     }
 
+    function resetRoads() {
+      // Devolver todo el dinero
+      const refund = roads.length * roadCost;
+      money += refund;
+      updateMoney();
+
+      // Limpiar carreteras
+      roads = [];
+      localStorage.setItem('roads', JSON.stringify(roads));
+      createGrid();
+
+      alert(`Carreteras reiniciadas. Se devolvieron $${refund}`);
+    }
+
     function updateMoney() {
       moneyDisplay.textContent = money;
       localStorage.setItem('money', money);
-    }
-
-    function toggleBuildMode() {
-      buildMode = !buildMode;
-      alert(buildMode ? "Haz clic o arrastra para construir o quitar carretera" : "Modo construcción desactivado");
     }
 
     function mergeCars() {
@@ -259,7 +303,8 @@
       return null;
     }
 
-    // Crear un auto (div) y devolver objeto con estado
+    let cars = [];
+
     function createCar(id) {
       const carDiv = document.createElement('div');
       carDiv.classList.add('car');
@@ -271,18 +316,16 @@
         div: carDiv,
         path: [],
         stepIndex: 0,
-        position: null, // {x,y} actual
+        position: null,
         crashed: false
       };
     }
 
-    // Mover todos los autos paso a paso
     function moveAllCars() {
-      const positions = new Map(); // key= "x,y" value= array de cars en esa celda
+      const positions = new Map();
 
       for (const car of cars) {
         if (car.stepIndex >= car.path.length) {
-          // llegó al destino, mantiene posición final
           car.position = car.path[car.path.length - 1];
           car.div.style.left = (car.position.x * 10 + 1) + 'px';
           car.div.style.top = (car.position.y * 10 + 2) + 'px';
@@ -295,7 +338,6 @@
         car.stepIndex++;
       }
 
-      // Revisar choques
       positions.clear();
       for (const car of cars) {
         const key = `${car.position.x},${car.position.y}`;
@@ -303,7 +345,6 @@
         positions.get(key).push(car);
       }
 
-      // Si hay más de 1 auto en la misma posición, los ponemos rojos
       for (const [posKey, carsInPos] of positions.entries()) {
         if (carsInPos.length > 1) {
           carsInPos.forEach(car => {
@@ -311,7 +352,6 @@
             car.crashed = true;
           });
         } else {
-          // Si no hay choque y antes estaban en rojo, volver a verde
           carsInPos.forEach(car => {
             if(car.crashed) {
               car.div.style.backgroundColor = '#90EE90';
@@ -321,13 +361,11 @@
         }
       }
 
-      // Repetir movimiento mientras haya autos que no hayan llegado
       if (cars.some(c => c.stepIndex < c.path.length)) {
         setTimeout(moveAllCars, 200 / carSpeed);
       }
     }
 
-    // Iniciar simulación con varios autos
     function startSimulation() {
       if (roads.length === 0) {
         alert("Por favor construye carreteras para que los autos puedan moverse.");
@@ -344,8 +382,9 @@
         return;
       }
 
+      cars.forEach(c => c.div.remove()); // remover autos anteriores
       cars = [];
-      // Crear, por ejemplo, 5 autos
+
       const numberOfCars = 5;
 
       for (let i = 0; i < numberOfCars; i++) {
@@ -363,12 +402,7 @@
       moveAllCars();
     }
 
-    function updateMoney() {
-      moneyDisplay.textContent = money;
-      localStorage.setItem('money', money);
-    }
-
-    moneyDisplay.textContent = money;
+    updateMoney();
     createGrid();
   </script>
 </body>
