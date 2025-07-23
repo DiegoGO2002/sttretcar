@@ -38,6 +38,7 @@
       background-color: transparent;
       box-sizing: border-box;
       border: 0.5px solid #5D3A3A;
+      user-select: none;
     }
     .road-cell {
       background-color: #4E342E;
@@ -105,7 +106,8 @@
     const cols = 100;
     const gridCells = [];
 
-    // Crear la cuadrícula
+    let isDrawing = false;
+
     function createGrid() {
       grid.innerHTML = "";
       for (let y = 0; y < rows; y++) {
@@ -120,11 +122,24 @@
             cell.classList.add("road-cell");
           }
 
-          cell.addEventListener("click", () => {
+          // Eventos para drag & draw:
+          cell.addEventListener("mousedown", (e) => {
             if (buildMode && !cell.classList.contains("road-cell")) {
-              cell.classList.add("road-cell");
-              roads.push({ x, y });
-              localStorage.setItem('roads', JSON.stringify(roads));
+              paintRoadCell(cell, x, y);
+              isDrawing = true;
+              e.preventDefault();
+            }
+          });
+
+          cell.addEventListener("mouseover", () => {
+            if (buildMode && isDrawing && !cell.classList.contains("road-cell")) {
+              paintRoadCell(cell, x, y);
+            }
+          });
+
+          cell.addEventListener("mouseup", () => {
+            if (buildMode) {
+              isDrawing = false;
             }
           });
 
@@ -132,11 +147,24 @@
           gridCells[y][x] = cell;
         }
       }
+
+      // Para terminar dibujo si sueltas fuera de una celda
+      document.addEventListener("mouseup", () => {
+        isDrawing = false;
+      });
+    }
+
+    function paintRoadCell(cell, x, y) {
+      cell.classList.add("road-cell");
+      if (!roads.find(r => r.x === x && r.y === y)) {
+        roads.push({ x, y });
+        localStorage.setItem('roads', JSON.stringify(roads));
+      }
     }
 
     function toggleBuildMode() {
       buildMode = !buildMode;
-      alert(buildMode ? "Haz clic para colocar carretera" : "Modo construcción desactivado");
+      alert(buildMode ? "Haz clic o arrastra para colocar carretera" : "Modo construcción desactivado");
     }
 
     function mergeCars() {
@@ -151,7 +179,6 @@
       incomePerCar += 2;
     }
 
-    // Generar matriz para pathfinding: 1=carretera, 0=no carretera
     function buildRoadMatrix() {
       const matrix = Array(rows).fill(null).map(() => Array(cols).fill(0));
       roads.forEach(({ x, y }) => {
@@ -160,7 +187,6 @@
       return matrix;
     }
 
-    // BFS para encontrar ruta más corta entre dos puntos sobre carretera
     function bfs(start, end, matrix) {
       const queue = [];
       const visited = new Set();
@@ -174,7 +200,6 @@
       while (queue.length > 0) {
         const current = queue.shift();
         if (current.x === end.x && current.y === end.y) {
-          // reconstruir ruta
           const path = [];
           let curKey = key(end);
           while (curKey !== key(start)) {
@@ -207,20 +232,17 @@
           }
         }
       }
-      return null; // no encontró ruta
+      return null;
     }
 
-    // Movimiento del auto
     let carDiv = null;
     let path = [];
     let stepIndex = 0;
-    let moveTimeout = null;
 
     function startCarMovement(route) {
       if (!carDiv) {
         carDiv = document.createElement('div');
         carDiv.classList.add('car');
-        // El auto va dentro del grid-wrapper para que se posicione relativo a la cuadrícula
         document.querySelector('.grid-wrapper').appendChild(carDiv);
       }
       path = route;
@@ -234,15 +256,13 @@
         return;
       }
       const pos = path[stepIndex];
-      // Posiciona el auto, teniendo en cuenta que cada celda es 10x10 px
       carDiv.style.left = (pos.x * 10 + 1) + 'px';
       carDiv.style.top = (pos.y * 10 + 2) + 'px';
 
       stepIndex++;
-      moveTimeout = setTimeout(moveStep, 200 / carSpeed);
+      setTimeout(moveStep, 200 / carSpeed);
     }
 
-    // Iniciar simulación: busca ruta y mueve auto
     function startSimulation() {
       if (roads.length === 0) {
         alert("Por favor construye carreteras para que el auto pueda moverse.");
@@ -251,7 +271,6 @@
 
       const matrix = buildRoadMatrix();
 
-      // Punto inicial y destino (puedes cambiar el destino si quieres)
       const start = { x: 0, y: 0 };
       const end = { x: 15, y: 15 };
 
@@ -268,10 +287,8 @@
       }
     }
 
-    // Inicializar
     moneyDisplay.textContent = money;
     createGrid();
   </script>
 </body>
 </html>
-
