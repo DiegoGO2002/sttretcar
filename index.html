@@ -1,174 +1,166 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Simulador de Tráfico en Marte</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simulador Marte</title>
   <style>
     body {
       font-family: sans-serif;
-      background: #2c2c2c;
+      background: #2e1d17;
       color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      text-align: center;
     }
-
     .grid {
       display: grid;
       grid-template-columns: repeat(100, 10px);
       grid-template-rows: repeat(100, 10px);
-      margin: 10px 0;
+      gap: 1px;
+      margin: 20px auto;
+      width: fit-content;
     }
-
     .cell {
       width: 10px;
       height: 10px;
-      background: #3a2a1e;
-      border: 0.5px solid #2c2c2c;
-      position: relative;
+      background: #703e30;
       user-select: none;
     }
-
     .road {
-      background: #8b5e3c;
+      background: #bbb;
     }
-
-    .start-flag, .end-flag {
-      font-size: 8px;
-      position: absolute;
-      top: -2px;
-      left: -1px;
-    }
-
     .car {
-      font-size: 8px;
       position: absolute;
-      top: -2px;
-      left: -1px;
+      font-size: 10px;
       pointer-events: none;
     }
-
     .controls {
-      display: flex;
-      gap: 10px;
       margin-bottom: 10px;
-      flex-wrap: wrap;
     }
-
-    button {
-      background: #5a5a5a;
-      border: none;
-      padding: 5px 10px;
-      color: white;
-      cursor: pointer;
-    }
-
-    .money {
-      margin-bottom: 5px;
+    .flag {
+      font-size: 10px;
+      pointer-events: none;
+      position: absolute;
     }
   </style>
 </head>
 <body>
-  <h2>Tráfico en Marte 🚗</h2>
-  <div class="money">💰 Dinero: $<span id="money">1000000</span></div>
+  <h1>Simulador de Tráfico en Marte</h1>
   <div class="controls">
     <button onclick="setMode('add')">Agregar carretera</button>
     <button onclick="setMode('remove')">Quitar carretera</button>
     <button onclick="resetRoads()">Reiniciar carreteras</button>
-    <button onclick="startSimulation()">Iniciar simulación</button>
+    <button onclick="startSimulation()">Iniciar Simulación</button>
+    <div>Dinero: $<span id="money">100000</span></div>
   </div>
-  <div class="grid" id="grid"></div>
+  <div id="grid" class="grid"></div>
 
   <script>
-    const gridSize = 100;
-    const grid = document.getElementById("grid");
-    let mode = "add";
-    let isDragging = false;
+    const gridElement = document.getElementById('grid');
+    const moneyDisplay = document.getElementById('money');
+    let money = 100000;
+    let mode = 'add';
+    const size = 100;
+    let isMouseDown = false;
     let matrix = [];
+    let cells = [];
     let cars = [];
-    let money = 1000000;
-
-    function setMode(m) {
-      mode = m;
-    }
 
     function updateMoney() {
-      document.getElementById("money").textContent = money;
+      moneyDisplay.textContent = money;
     }
 
-    function resetRoads() {
-      matrix = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
-      document.querySelectorAll(".cell").forEach(cell => {
-        cell.classList.remove("road");
-        cell.innerHTML = '';
-      });
-      placeFlags();
-      money = 1000;
-      updateMoney();
+    function setMode(newMode) {
+      mode = newMode;
     }
 
     function createGrid() {
-      grid.innerHTML = "";
-      matrix = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
+      matrix = Array.from({ length: size }, () => Array(size).fill(0));
+      cells = [];
+      gridElement.innerHTML = '';
 
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          const cell = document.createElement("div");
-          cell.classList.add("cell");
-          cell.dataset.x = x;
-          cell.dataset.y = y;
+      for (let y = 0; y < size; y++) {
+        const row = [];
+        for (let x = 0; x < size; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          gridElement.appendChild(cell);
+          row.push(cell);
+        }
+        cells.push(row);
+      }
 
-          cell.addEventListener("mousedown", () => {
-            isDragging = true;
-            toggleRoad(cell);
-          });
+      // Bandera inicio
+      const flagStart = document.createElement('div');
+      flagStart.textContent = '🏁';
+      flagStart.className = 'flag';
+      flagStart.style.top = '0px';
+      flagStart.style.left = '0px';
+      flagStart.style.transform = 'translate(0, 0)';
+      flagStart.style.position = 'absolute';
+      gridElement.appendChild(flagStart);
 
-          cell.addEventListener("mouseover", () => {
-            if (isDragging) toggleRoad(cell);
-          });
+      // Bandera final
+      const flagEnd = document.createElement('div');
+      flagEnd.textContent = '🏁';
+      flagEnd.className = 'flag';
+      flagEnd.style.top = `${(size - 1) * 11}px`;
+      flagEnd.style.left = `${(size - 1) * 11}px`;
+      flagEnd.style.transform = 'translate(0, 0)';
+      flagEnd.style.position = 'absolute';
+      gridElement.appendChild(flagEnd);
 
-          grid.appendChild(cell);
+      addMouseEvents();
+    }
+
+    function addMouseEvents() {
+      gridElement.onmousedown = () => isMouseDown = true;
+      gridElement.onmouseup = () => isMouseDown = false;
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const cell = cells[y][x];
+          cell.onmouseover = () => {
+            if (!isMouseDown) return;
+            handleCell(x, y);
+          };
+          cell.onclick = () => handleCell(x, y);
         }
       }
-
-      document.addEventListener("mouseup", () => isDragging = false);
-      placeFlags();
     }
 
-    function placeFlags() {
-      const startCell = getCell(0, 0);
-      const endCell = getCell(99, 99);
-      if (startCell) startCell.innerHTML = `<div class="start-flag">🚩</div>`;
-      if (endCell) endCell.innerHTML = `<div class="end-flag">🚩</div>`;
-    }
+    function handleCell(x, y) {
+      if (x === 0 && y === 0) return;
+      if (x === 99 && y === 99) return;
 
-    function getCell(x, y) {
-      return grid.children[y * gridSize + x];
-    }
-
-    function toggleRoad(cell) {
-      const x = parseInt(cell.dataset.x);
-      const y = parseInt(cell.dataset.y);
-
-      if (mode === "add" && matrix[y][x] === 0 && money >= 10) {
+      if (mode === 'add' && matrix[y][x] === 0 && money >= 10) {
         matrix[y][x] = 1;
-        cell.classList.add("road");
+        cells[y][x].classList.add('road');
         money -= 10;
-        updateMoney();
-      } else if (mode === "remove" && matrix[y][x] === 1) {
+      } else if (mode === 'remove' && matrix[y][x] === 1) {
         matrix[y][x] = 0;
-        cell.classList.remove("road");
-        cell.innerHTML = '';
-        placeFlags();
+        cells[y][x].classList.remove('road');
         money += 10;
-        updateMoney();
       }
+      updateMoney();
     }
 
-    function bfs(start, end, mat) {
-      const visited = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
-      const queue = [[start]];
-      visited[start.y][start.x] = true;
+    function resetRoads() {
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if ((x !== 0 || y !== 0) && (x !== 99 || y !== 99)) {
+            matrix[y][x] = 0;
+            cells[y][x].classList.remove('road');
+          }
+        }
+      }
+      money = 100000;
+      updateMoney();
+    }
+
+    function bfs(start, end, matrix) {
+      const queue = [ [start] ];
+      const visited = new Set();
+      visited.add(`${start.x},${start.y}`);
 
       while (queue.length > 0) {
         const path = queue.shift();
@@ -176,18 +168,11 @@
 
         if (x === end.x && y === end.y) return path;
 
-        const directions = [
-          { x: 0, y: -1 }, { x: 0, y: 1 },
-          { x: -1, y: 0 }, { x: 1, y: 0 }
-        ];
-
-        for (const d of directions) {
-          const nx = x + d.x;
-          const ny = y + d.y;
-
-          if (nx >= 0 && ny >= 0 && nx < gridSize && ny < gridSize &&
-              mat[ny][nx] === 1 && !visited[ny][nx]) {
-            visited[ny][nx] = true;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < size && ny < size &&
+              matrix[ny][nx] === 1 && !visited.has(`${nx},${ny}`)) {
+            visited.add(`${nx},${ny}`);
             queue.push([...path, { x: nx, y: ny }]);
           }
         }
@@ -196,33 +181,31 @@
       return null;
     }
 
-    function createCar(index) {
-      const car = document.createElement("div");
-      car.classList.add("car");
-      car.textContent = "🚗";
-      grid.appendChild(car);
-      return { div: car };
+    function createCar(i) {
+      const car = document.createElement('div');
+      car.className = 'car';
+      car.textContent = '🚗';
+      gridElement.appendChild(car);
+      return { div: car, stepIndex: 0, path: [] };
     }
 
     function moveAllCars() {
-      const occupied = {};
-
       function moveStep() {
+        const positions = new Map();
+
         cars.forEach(car => {
           if (car.stepIndex < car.path.length) {
             const pos = car.path[car.stepIndex];
             const key = `${pos.x},${pos.y}`;
 
-            if (occupied[key]) {
-              // choque
-              car.div.textContent = "🚗";
-              car.div.style.color = "red";
-              occupied[key].div.textContent = "🚗";
-              occupied[key].div.style.color = "red";
+            if (positions.has(key)) {
+              car.div.textContent = '🚗🔴';
+              positions.get(key).div.textContent = '🚗🔴';
             } else {
-              occupied[key] = car;
-              car.div.style.left = `${pos.x * 10}px`;
-              car.div.style.top = `${pos.y * 10}px`;
+              positions.set(key, car);
+              car.div.style.left = `${pos.x * 11}px`;
+              car.div.style.top = `${pos.y * 11}px`;
+              car.div.textContent = '🚗';
             }
 
             car.stepIndex++;
@@ -234,7 +217,7 @@
         }
       }
 
-      moveStep();
+      requestAnimationFrame(moveStep);
     }
 
     function startSimulation() {
@@ -242,20 +225,18 @@
       const end = { x: 99, y: 99 };
 
       if (matrix[start.y][start.x] !== 1 || matrix[end.y][end.x] !== 1) {
-        alert("La posición de inicio o destino no está en carretera");
+        alert("Inicio o destino no está en carretera.");
         return;
       }
 
       cars.forEach(c => c.div.remove());
       cars = [];
 
-      const numberOfCars = 5;
-
-      for (let i = 0; i < numberOfCars; i++) {
+      for (let i = 0; i < 5; i++) {
         const car = createCar(i);
         const route = bfs(start, end, matrix);
         if (!route) {
-          alert("No se encontró ruta desde el inicio al destino");
+          alert("No hay ruta disponible.");
           return;
         }
         car.path = route;
