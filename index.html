@@ -1,209 +1,199 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Simulador Marte</title>
+  <title>Simulador de Tráfico en Marte</title>
   <style>
     body {
-      background-color: #5b2c1c;
       font-family: sans-serif;
-      color: white;
+      background: #e6dfd3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     #controls {
-      margin-bottom: 10px;
+      margin: 10px;
     }
-    button {
-      margin-right: 5px;
-      padding: 8px;
-    }
-    #grid {
+    #map {
       display: grid;
       grid-template-columns: repeat(100, 20px);
       grid-template-rows: repeat(100, 20px);
       gap: 1px;
+      user-select: none;
     }
     .cell {
       width: 20px;
       height: 20px;
-      background-color: #a0522d;
-      border: 1px solid transparent;
+      background-color: #cdb89d;
+      border: 1px solid #cdb89d;
       text-align: center;
-      font-size: 16px;
+      font-size: 14px;
       line-height: 20px;
-      user-select: none;
+    }
+    .road {
+      background-image: url('https://github.com/DiegoGO2002/sttretcar/blob/main/ChatGPT%20Image%2023%20jul%202025,%2012_55_53%20p.m..png?raw=true');
+      background-size: cover;
+    }
+    .car {
+      font-size: 16px;
+    }
+    #money {
+      font-size: 18px;
+      margin: 5px;
     }
   </style>
 </head>
 <body>
   <div id="controls">
-    <button onclick="setMode('road')">Agregar carretera</button>
-    <button onclick="setMode('remove')">Quitar carretera</button>
-    <button onclick="resetRoads()">Reiniciar carreteras</button>
-    <button onclick="addCar()">Agregar coche</button>
-    <span id="money">Dinero: $100000</span>
+    <button onclick="mode='add'">Agregar carretera</button>
+    <button onclick="mode='remove'">Quitar carretera</button>
+    <button onclick="resetRoads()">Reiniciar carretera</button>
+    <button onclick="startSimulation()">Iniciar Simulación</button>
   </div>
-  <div id="grid"></div>
+  <div id="money">💰 Dinero: $100000</div>
+  <div id="map"></div>
 
   <script>
-    const grid = document.getElementById("grid");
-    const moneyEl = document.getElementById("money");
-    const roadTexture = "url('https://github.com/DiegoGO2002/sttretcar/blob/main/ChatGPT%20Image%2023%20jul%202025,%2012_55_53%20p.m..png?raw=true')";
-    const cells = [];
-    let mode = 'road';
+    const map = document.getElementById('map');
+    const moneyDisplay = document.getElementById('money');
+    let mode = 'add';
     let money = 100000;
-    let isMouseDown = false;
-    const start = [0, 0];
-    const end = [99, 99];
-    const cars = [];
+    let mouseDown = false;
+    const grid = [];
+    const size = 100;
+    const start = { x: 0, y: 0 };
+    const end = { x: 99, y: 99 };
 
-    function setMode(newMode) {
-      mode = newMode;
+    function createCell(x, y) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.x = x;
+      cell.dataset.y = y;
+      cell.road = false;
+      cell.car = null;
+      cell.addEventListener('mousedown', () => handleEdit(cell));
+      cell.addEventListener('mouseover', () => {
+        if (mouseDown) handleEdit(cell);
+      });
+      return cell;
     }
 
-    function updateMoney(amount) {
-      money += amount;
-      moneyEl.textContent = `Dinero: $${money}`;
+    function handleEdit(cell) {
+      const x = parseInt(cell.dataset.x);
+      const y = parseInt(cell.dataset.y);
+      if (mode === 'add' && !cell.road && money >= 10) {
+        cell.road = true;
+        cell.classList.add('road');
+        money -= 10;
+      } else if (mode === 'remove' && cell.road) {
+        cell.road = false;
+        cell.classList.remove('road');
+      }
+      updateMoney();
+    }
+
+    function updateMoney() {
+      moneyDisplay.textContent = `💰 Dinero: $${money}`;
     }
 
     function resetRoads() {
-      for (let row of cells) {
-        for (let cell of row) {
-          cell.dataset.road = "false";
-          cell.style.backgroundImage = "";
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const cell = grid[y][x];
+          cell.road = false;
+          cell.classList.remove('road');
         }
       }
+      updateMoney();
     }
 
-    function createGrid() {
-      for (let y = 0; y < 100; y++) {
-        const row = [];
-        for (let x = 0; x < 100; x++) {
-          const cell = document.createElement("div");
-          cell.className = "cell";
-          cell.dataset.x = x;
-          cell.dataset.y = y;
-          cell.dataset.road = "false";
-          grid.appendChild(cell);
-          row.push(cell);
-
-          cell.addEventListener("mousedown", () => {
-            isMouseDown = true;
-            handleCellClick(cell);
-          });
-          cell.addEventListener("mouseenter", () => {
-            if (isMouseDown) handleCellClick(cell);
-          });
+    function getNeighbors(x, y) {
+      const neighbors = [];
+      [[0,1],[1,0],[-1,0],[0,-1]].forEach(([dx, dy]) => {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < size && ny < size) {
+          const neighbor = grid[ny][nx];
+          if (neighbor.road) neighbors.push({ x: nx, y: ny });
         }
-        cells.push(row);
-      }
-
-      document.addEventListener("mouseup", () => {
-        isMouseDown = false;
       });
-
-      // Banderitas
-      cells[start[1]][start[0]].textContent = "";
-      cells[end[1]][end[0]].textContent = "";
+      return neighbors;
     }
 
-    function handleCellClick(cell) {
-      const x = +cell.dataset.x;
-      const y = +cell.dataset.y;
-      if ((x === start[0] && y === start[1]) || (x === end[0] && y === end[1])) return;
-
-      if (mode === 'road' && money >= 10) {
-        if (cell.dataset.road === "false") {
-          cell.dataset.road = "true";
-          cell.style.backgroundImage = roadTexture;
-          cell.style.backgroundSize = "cover";
-          updateMoney(-10);
-        }
-      } else if (mode === 'remove') {
-        cell.dataset.road = "false";
-        cell.style.backgroundImage = "";
-      }
-    }
-
-    function addCar() {
-      const path = findPath(start, end);
-      if (!path || path.length === 0) {
-        alert("No hay camino disponible");
-        return;
-      }
-
-      const car = {
-        element: document.createElement("div"),
-        path,
-        position: 0,
-        crashed: false
-      };
-      car.element.className = "cell";
-      car.element.textContent = "🚗";
-      car.element.style.position = "absolute";
-      grid.appendChild(car.element);
-      cars.push(car);
-    }
-
-    function updateCars() {
-      for (let car of cars) {
-        if (car.crashed || car.position >= car.path.length) continue;
-
-        const [x, y] = car.path[car.position];
-        const cell = cells[y][x];
-
-        // Check collision
-        for (let other of cars) {
-          if (other !== car && !other.crashed && other.path[other.position]?.[0] === x && other.path[other.position]?.[1] === y) {
-            car.element.textContent = "🚗";
-            car.element.style.color = "red";
-            other.element.textContent = "🚗";
-            other.element.style.color = "red";
-            car.crashed = true;
-            other.crashed = true;
-            return;
-          }
-        }
-
-        // Move car to cell
-        cell.appendChild(car.element);
-        car.position++;
-      }
-    }
-
-    function findPath(start, end) {
-      const queue = [[start]];
-      const visited = new Set();
-      visited.add(start.toString());
+    function bfs(start, end) {
+      const queue = [start];
+      const visited = Array(size).fill(0).map(() => Array(size).fill(false));
+      const parent = Array(size).fill(0).map(() => Array(size).fill(null));
+      visited[start.y][start.x] = true;
 
       while (queue.length > 0) {
-        const path = queue.shift();
-        const [x, y] = path[path.length - 1];
-
-        if (x === end[0] && y === end[1]) return path;
-
-        const neighbors = [
-          [x + 1, y],
-          [x - 1, y],
-          [x, y + 1],
-          [x, y - 1]
-        ];
-
-        for (let [nx, ny] of neighbors) {
-          if (
-            nx >= 0 && ny >= 0 && nx < 100 && ny < 100 &&
-            cells[ny][nx].dataset.road === "true" &&
-            !visited.has([nx, ny].toString())
-          ) {
-            visited.add([nx, ny].toString());
-            queue.push([...path, [nx, ny]]);
+        const current = queue.shift();
+        if (current.x === end.x && current.y === end.y) break;
+        const neighbors = getNeighbors(current.x, current.y);
+        for (const n of neighbors) {
+          if (!visited[n.y][n.x]) {
+            visited[n.y][n.x] = true;
+            parent[n.y][n.x] = current;
+            queue.push(n);
           }
         }
       }
-      return null;
+
+      const path = [];
+      let curr = end;
+      while (curr && !(curr.x === start.x && curr.y === start.y)) {
+        path.unshift(curr);
+        curr = parent[curr.y][curr.x];
+      }
+      if (curr) path.unshift(start);
+      return path;
     }
 
-    createGrid();
-    setInterval(updateCars, 200);
+    function startSimulation() {
+      const car = document.createElement('div');
+      car.textContent = '🚗';
+      car.classList.add('car');
+
+      const path = bfs(start, end);
+      if (path.length < 2) return alert("No hay camino");
+
+      let i = 0;
+      function move() {
+        if (i > 0) {
+          grid[path[i - 1].y][path[i - 1].x].textContent = '';
+        }
+        const pos = path[i];
+        const cell = grid[pos.y][pos.x];
+        if (cell.textContent === '🚗') {
+          cell.textContent = '🚗';
+          cell.style.color = 'red';
+        } else {
+          cell.textContent = '🚗';
+          cell.style.color = 'green';
+        }
+        i++;
+        if (i < path.length) {
+          setTimeout(move, 100);
+        }
+      }
+      move();
+    }
+
+    // Crear mapa
+    for (let y = 0; y < size; y++) {
+      const row = [];
+      for (let x = 0; x < size; x++) {
+        const cell = createCell(x, y);
+        map.appendChild(cell);
+        row.push(cell);
+      }
+      grid.push(row);
+    }
+
+    document.body.addEventListener('mousedown', () => (mouseDown = true));
+    document.body.addEventListener('mouseup', () => (mouseDown = false));
+
+    updateMoney();
   </script>
 </body>
 </html>
