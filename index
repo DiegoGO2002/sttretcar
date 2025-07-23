@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador de Tráfico en Marte</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #ECEFF1; /* cielo marciano */
+      color: #fff;
+    }
+    .game-container {
+      display: flex;
+      flex-direction: row;
+      height: 100vh;
+    }
+    .road {
+      flex: 1;
+      background-color: #4E342E; /* asfalto marciano */
+      position: relative;
+      overflow: hidden;
+    }
+    .hud {
+      width: 250px;
+      background-color: #2E2E2E;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .hud h1 {
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+    .hud button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 16px;
+      background-color: #FF6F00;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .car {
+      width: 30px;
+      height: 20px;
+      position: absolute;
+      top: 90%;
+      background-color: #90EE90;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div class="road" id="road"></div>
+    <div class="hud">
+      <h1>Dinero: $<span id="money">0</span></h1>
+      <button onclick="addCars()">Add Cars</button>
+      <button onclick="mergeCars()">Merge Cars</button>
+      <button onclick="upgradeRoad()">Upgrade Road</button>
+      <button onclick="increaseIncome()">Income</button>
+    </div>
+  </div>
+
+  <script>
+    const road = document.getElementById("road");
+    const moneyDisplay = document.getElementById("money");
+
+    let carsPerSecond = 1;
+    let carSpeed = 1;
+    let incomePerCar = 1;
+    let money = parseInt(localStorage.getItem('money')) || 0;
+
+    function spawnCar() {
+      const car = document.createElement("div");
+      car.className = "car";
+      car.style.left = `${Math.random() * (road.clientWidth - 30)}px`;
+      road.appendChild(car);
+
+      let top = road.clientHeight;
+      const interval = setInterval(() => {
+        top -= carSpeed;
+        car.style.top = `${top}px`;
+        if (top < -30) {
+          road.removeChild(car);
+          money += incomePerCar;
+          localStorage.setItem('money', money);
+          moneyDisplay.textContent = money;
+          clearInterval(interval);
+        }
+      }, 16);
+    }
+
+    function gameLoop() {
+      for (let i = 0; i < carsPerSecond; i++) {
+        spawnCar();
+      }
+    }
+
+    function addCars() {
+      carsPerSecond++;
+    }
+
+    function mergeCars() {
+      incomePerCar += 1;
+    }
+
+    function upgradeRoad() {
+      carSpeed += 0.5;
+    }
+
+    function increaseIncome() {
+      incomePerCar += 2;
+    }
+
+    // Inicializar
+    setInterval(gameLoop, 1000);
+    moneyDisplay.textContent = money;
+  </script>
+</body>
+</html>
