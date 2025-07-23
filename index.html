@@ -49,7 +49,7 @@
       background-color: #90EE90;
       position: absolute;
       border-radius: 1px;
-      transition: left 0.15s linear, top 0.15s linear;
+      transition: left 0.15s linear, top 0.15s linear, background-color 0.2s;
       z-index: 10;
     }
     .hud {
@@ -84,7 +84,7 @@
     </div>
     <div class="hud">
       <h1>Dinero: $<span id="money">0</span></h1>
-      <button onclick="toggleBuildMode()">Construir carretera</button>
+      <button onclick="toggleBuildMode()">Construir/Quitar carretera</button>
       <button onclick="mergeCars()">Merge Cars</button>
       <button onclick="upgradeRoad()">Upgrade Road</button>
       <button onclick="increaseIncome()">Income</button>
@@ -98,7 +98,7 @@
 
     let carSpeed = 1;
     let incomePerCar = 1;
-    let money = parseInt(localStorage.getItem('money')) || 0;
+    let money = parseInt(localStorage.getItem('money')) || 1000; // Empieza con 1000 para construir
     let buildMode = false;
     let roads = JSON.parse(localStorage.getItem('roads')) || [];
 
@@ -107,6 +107,10 @@
     const gridCells = [];
 
     let isDrawing = false;
+    const roadCost = 10;
+
+    // Autos: array de objetos { div, path, stepIndex, position }
+    let cars = [];
 
     function createGrid() {
       grid.innerHTML = "";
@@ -122,18 +126,18 @@
             cell.classList.add("road-cell");
           }
 
-          // Eventos para drag & draw:
+          // Drag & draw para construir o quitar carretera
           cell.addEventListener("mousedown", (e) => {
-            if (buildMode && !cell.classList.contains("road-cell")) {
-              paintRoadCell(cell, x, y);
+            if (buildMode) {
+              toggleRoadCell(cell, x, y);
               isDrawing = true;
               e.preventDefault();
             }
           });
 
           cell.addEventListener("mouseover", () => {
-            if (buildMode && isDrawing && !cell.classList.contains("road-cell")) {
-              paintRoadCell(cell, x, y);
+            if (buildMode && isDrawing) {
+              toggleRoadCell(cell, x, y);
             }
           });
 
@@ -148,23 +152,43 @@
         }
       }
 
-      // Para terminar dibujo si sueltas fuera de una celda
       document.addEventListener("mouseup", () => {
         isDrawing = false;
       });
     }
 
-    function paintRoadCell(cell, x, y) {
-      cell.classList.add("road-cell");
-      if (!roads.find(r => r.x === x && r.y === y)) {
-        roads.push({ x, y });
+    function toggleRoadCell(cell, x, y) {
+      const isRoad = cell.classList.contains("road-cell");
+      if (!isRoad) {
+        // Construir carretera solo si tienes dinero suficiente
+        if (money >= roadCost) {
+          cell.classList.add("road-cell");
+          roads.push({ x, y });
+          money -= roadCost;
+          updateMoney();
+          localStorage.setItem('roads', JSON.stringify(roads));
+        } else {
+          alert("No tienes dinero suficiente para construir carretera ($10 por celda)");
+          isDrawing = false; // para que no siga pintando sin dinero
+        }
+      } else {
+        // Quitar carretera: devolver dinero y quitar de array
+        cell.classList.remove("road-cell");
+        roads = roads.filter(r => !(r.x === x && r.y === y));
+        money += roadCost;
+        updateMoney();
         localStorage.setItem('roads', JSON.stringify(roads));
       }
     }
 
+    function updateMoney() {
+      moneyDisplay.textContent = money;
+      localStorage.setItem('money', money);
+    }
+
     function toggleBuildMode() {
       buildMode = !buildMode;
-      alert(buildMode ? "Haz clic o arrastra para colocar carretera" : "Modo construcción desactivado");
+      alert(buildMode ? "Haz clic o arrastra para construir o quitar carretera" : "Modo construcción desactivado");
     }
 
     function mergeCars() {
@@ -235,56 +259,113 @@
       return null;
     }
 
-    let carDiv = null;
-    let path = [];
-    let stepIndex = 0;
-
-    function startCarMovement(route) {
-      if (!carDiv) {
-        carDiv = document.createElement('div');
-        carDiv.classList.add('car');
-        document.querySelector('.grid-wrapper').appendChild(carDiv);
-      }
-      path = route;
-      stepIndex = 0;
-      moveStep();
+    // Crear un auto (div) y devolver objeto con estado
+    function createCar(id) {
+      const carDiv = document.createElement('div');
+      carDiv.classList.add('car');
+      carDiv.style.backgroundColor = '#90EE90'; // verde normal
+      carDiv.dataset.carId = id;
+      document.querySelector('.grid-wrapper').appendChild(carDiv);
+      return {
+        id,
+        div: carDiv,
+        path: [],
+        stepIndex: 0,
+        position: null, // {x,y} actual
+        crashed: false
+      };
     }
 
-    function moveStep() {
-      if (stepIndex >= path.length) {
-        alert("El auto llegó al destino");
-        return;
-      }
-      const pos = path[stepIndex];
-      carDiv.style.left = (pos.x * 10 + 1) + 'px';
-      carDiv.style.top = (pos.y * 10 + 2) + 'px';
+    // Mover todos los autos paso a paso
+    function moveAllCars() {
+      const positions = new Map(); // key= "x,y" value= array de cars en esa celda
 
-      stepIndex++;
-      setTimeout(moveStep, 200 / carSpeed);
+      for (const car of cars) {
+        if (car.stepIndex >= car.path.length) {
+          // llegó al destino, mantiene posición final
+          car.position = car.path[car.path.length - 1];
+          car.div.style.left = (car.position.x * 10 + 1) + 'px';
+          car.div.style.top = (car.position.y * 10 + 2) + 'px';
+          continue;
+        }
+        const pos = car.path[car.stepIndex];
+        car.position = pos;
+        car.div.style.left = (pos.x * 10 + 1) + 'px';
+        car.div.style.top = (pos.y * 10 + 2) + 'px';
+        car.stepIndex++;
+      }
+
+      // Revisar choques
+      positions.clear();
+      for (const car of cars) {
+        const key = `${car.position.x},${car.position.y}`;
+        if (!positions.has(key)) positions.set(key, []);
+        positions.get(key).push(car);
+      }
+
+      // Si hay más de 1 auto en la misma posición, los ponemos rojos
+      for (const [posKey, carsInPos] of positions.entries()) {
+        if (carsInPos.length > 1) {
+          carsInPos.forEach(car => {
+            car.div.style.backgroundColor = 'red';
+            car.crashed = true;
+          });
+        } else {
+          // Si no hay choque y antes estaban en rojo, volver a verde
+          carsInPos.forEach(car => {
+            if(car.crashed) {
+              car.div.style.backgroundColor = '#90EE90';
+              car.crashed = false;
+            }
+          });
+        }
+      }
+
+      // Repetir movimiento mientras haya autos que no hayan llegado
+      if (cars.some(c => c.stepIndex < c.path.length)) {
+        setTimeout(moveAllCars, 200 / carSpeed);
+      }
     }
 
+    // Iniciar simulación con varios autos
     function startSimulation() {
       if (roads.length === 0) {
-        alert("Por favor construye carreteras para que el auto pueda moverse.");
+        alert("Por favor construye carreteras para que los autos puedan moverse.");
         return;
       }
 
       const matrix = buildRoadMatrix();
 
       const start = { x: 0, y: 0 };
-      const end = { x: 15, y: 15 };
+      const end = { x: 99, y: 99 };
 
       if (matrix[start.y][start.x] !== 1 || matrix[end.y][end.x] !== 1) {
         alert("La posición de inicio o destino no está en carretera");
         return;
       }
 
-      const route = bfs(start, end, matrix);
-      if (route) {
-        startCarMovement(route);
-      } else {
-        alert("No se encontró ruta desde el inicio al destino");
+      cars = [];
+      // Crear, por ejemplo, 5 autos
+      const numberOfCars = 5;
+
+      for (let i = 0; i < numberOfCars; i++) {
+        const car = createCar(i);
+        const route = bfs(start, end, matrix);
+        if (!route) {
+          alert("No se encontró ruta desde el inicio al destino");
+          return;
+        }
+        car.path = route;
+        car.stepIndex = 0;
+        cars.push(car);
       }
+
+      moveAllCars();
+    }
+
+    function updateMoney() {
+      moneyDisplay.textContent = money;
+      localStorage.setItem('money', money);
     }
 
     moneyDisplay.textContent = money;
