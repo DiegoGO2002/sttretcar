@@ -1,118 +1,277 @@
-// ... tu código previo para grid y roads
-
-function buildRoadMatrix() {
-  const matrix = Array(rows).fill(null).map(() => Array(cols).fill(0));
-  roads.forEach(({x, y}) => {
-    matrix[y][x] = 1;
-  });
-  return matrix;
-}
-
-function bfs(start, end, matrix) {
-  const queue = [];
-  const visited = new Set();
-  const parent = {};
-  
-  function key(pos) { return pos.x + ',' + pos.y; }
-  
-  queue.push(start);
-  visited.add(key(start));
-  
-  while(queue.length > 0) {
-    const current = queue.shift();
-    if(current.x === end.x && current.y === end.y) {
-      // reconstruir ruta
-      const path = [];
-      let curKey = key(end);
-      while(curKey !== key(start)) {
-        const [x,y] = curKey.split(',').map(Number);
-        path.push({x,y});
-        curKey = parent[curKey];
-      }
-      path.push(start);
-      path.reverse();
-      return path;
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador de Tráfico en Marte</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #ECEFF1;
+      color: #fff;
+      overflow: hidden;
+      position: relative;
     }
-    
-    const directions = [
-      {x: current.x, y: current.y -1},
-      {x: current.x, y: current.y +1},
-      {x: current.x -1, y: current.y},
-      {x: current.x +1, y: current.y}
-    ];
-    
-    for(const next of directions) {
-      if(next.x >= 0 && next.x < cols && next.y >=0 && next.y < rows) {
-        if(matrix[next.y][next.x] === 1) {
-          const nextKey = key(next);
-          if(!visited.has(nextKey)) {
-            queue.push(next);
-            visited.add(nextKey);
-            parent[nextKey] = key(current);
+    .game-container {
+      display: flex;
+      flex-direction: row;
+      height: 100vh;
+    }
+    .grid-wrapper {
+      flex: 1;
+      overflow: scroll;
+      background-color: #8B2E2E;
+      position: relative;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(100, 10px);
+      grid-template-rows: repeat(100, 10px);
+      width: 1000px;
+      height: 1000px;
+      position: relative;
+    }
+    .cell {
+      width: 10px;
+      height: 10px;
+      background-color: transparent;
+      box-sizing: border-box;
+      border: 0.5px solid #5D3A3A;
+    }
+    .road-cell {
+      background-color: #4E342E;
+    }
+    .car {
+      width: 8px;
+      height: 6px;
+      background-color: #90EE90;
+      position: absolute;
+      border-radius: 1px;
+      transition: left 0.15s linear, top 0.15s linear;
+      z-index: 10;
+    }
+    .hud {
+      width: 250px;
+      background-color: #2E2E2E;
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .hud h1 {
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+    .hud button {
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
+      background-color: #FF6F00;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div class="grid-wrapper">
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="hud">
+      <h1>Dinero: $<span id="money">0</span></h1>
+      <button onclick="toggleBuildMode()">Construir carretera</button>
+      <button onclick="mergeCars()">Merge Cars</button>
+      <button onclick="upgradeRoad()">Upgrade Road</button>
+      <button onclick="increaseIncome()">Income</button>
+      <button onclick="startSimulation()">Iniciar Simulación</button>
+    </div>
+  </div>
+
+  <script>
+    const grid = document.getElementById("grid");
+    const moneyDisplay = document.getElementById("money");
+
+    let carSpeed = 1;
+    let incomePerCar = 1;
+    let money = parseInt(localStorage.getItem('money')) || 0;
+    let buildMode = false;
+    let roads = JSON.parse(localStorage.getItem('roads')) || [];
+
+    const rows = 100;
+    const cols = 100;
+    const gridCells = [];
+
+    // Crear la cuadrícula
+    function createGrid() {
+      grid.innerHTML = "";
+      for (let y = 0; y < rows; y++) {
+        gridCells[y] = [];
+        for (let x = 0; x < cols; x++) {
+          const cell = document.createElement("div");
+          cell.classList.add("cell");
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+
+          if (roads.find(r => r.x === x && r.y === y)) {
+            cell.classList.add("road-cell");
           }
+
+          cell.addEventListener("click", () => {
+            if (buildMode && !cell.classList.contains("road-cell")) {
+              cell.classList.add("road-cell");
+              roads.push({ x, y });
+              localStorage.setItem('roads', JSON.stringify(roads));
+            }
+          });
+
+          grid.appendChild(cell);
+          gridCells[y][x] = cell;
         }
       }
     }
-  }
-  
-  return null; // sin ruta
-}
 
-let carDiv = null;
-let path = [];
-let stepIndex = 0;
+    function toggleBuildMode() {
+      buildMode = !buildMode;
+      alert(buildMode ? "Haz clic para colocar carretera" : "Modo construcción desactivado");
+    }
 
-function startCarMovement(route) {
-  if(!carDiv) {
-    carDiv = document.createElement('div');
-    carDiv.classList.add('car');
-    document.body.appendChild(carDiv);
-  }
-  path = route;
-  stepIndex = 0;
-  moveStep();
-}
+    function mergeCars() {
+      incomePerCar += 1;
+    }
 
-function moveStep() {
-  if(stepIndex >= path.length) {
-    alert("El auto llegó al destino");
-    return;
-  }
-  const pos = path[stepIndex];
-  carDiv.style.left = (pos.x * 10 + 1) + 'px';
-  carDiv.style.top = (pos.y * 10 + 2) + 'px';
-  
-  stepIndex++;
-  setTimeout(moveStep, 200);
-}
+    function upgradeRoad() {
+      carSpeed += 0.5;
+    }
 
-// Botón para iniciar ruta y movimiento del auto
-function startSimulation() {
-  if(roads.length === 0) {
-    alert("Por favor construye carreteras para que el auto pueda moverse.");
-    return;
-  }
-  
-  const matrix = buildRoadMatrix();
-  const start = {x: 0, y: 0};
-  const end = {x: 10, y: 10}; // Cambia al destino que quieras, asegúrate que sea carretera
-  
-  if(matrix[start.y][start.x] !== 1 || matrix[end.y][end.x] !== 1) {
-    alert("La posición de inicio o destino no está en carretera");
-    return;
-  }
-  
-  const route = bfs(start, end, matrix);
-  if(route) {
-    startCarMovement(route);
-  } else {
-    alert("No se encontró ruta desde el inicio al destino");
-  }
-}
+    function increaseIncome() {
+      incomePerCar += 2;
+    }
 
-// Agrega un botón en tu HTML para probar:
-const hud = document.querySelector('.hud');
-const btnSim = document.createElement('button');
-btnSim.textContent = 'Iniciar Simulación';
-btnSim.onclick = startSimulation;
-hud.appendChild(btnSim);
+    // Generar matriz para pathfinding: 1=carretera, 0=no carretera
+    function buildRoadMatrix() {
+      const matrix = Array(rows).fill(null).map(() => Array(cols).fill(0));
+      roads.forEach(({ x, y }) => {
+        matrix[y][x] = 1;
+      });
+      return matrix;
+    }
+
+    // BFS para encontrar ruta más corta entre dos puntos sobre carretera
+    function bfs(start, end, matrix) {
+      const queue = [];
+      const visited = new Set();
+      const parent = {};
+
+      function key(pos) { return pos.x + ',' + pos.y; }
+
+      queue.push(start);
+      visited.add(key(start));
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (current.x === end.x && current.y === end.y) {
+          // reconstruir ruta
+          const path = [];
+          let curKey = key(end);
+          while (curKey !== key(start)) {
+            const [x, y] = curKey.split(',').map(Number);
+            path.push({ x, y });
+            curKey = parent[curKey];
+          }
+          path.push(start);
+          path.reverse();
+          return path;
+        }
+
+        const directions = [
+          { x: current.x, y: current.y - 1 },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x - 1, y: current.y },
+          { x: current.x + 1, y: current.y }
+        ];
+
+        for (const next of directions) {
+          if (next.x >= 0 && next.x < cols && next.y >= 0 && next.y < rows) {
+            if (matrix[next.y][next.x] === 1) {
+              const nextKey = key(next);
+              if (!visited.has(nextKey)) {
+                queue.push(next);
+                visited.add(nextKey);
+                parent[nextKey] = key(current);
+              }
+            }
+          }
+        }
+      }
+      return null; // no encontró ruta
+    }
+
+    // Movimiento del auto
+    let carDiv = null;
+    let path = [];
+    let stepIndex = 0;
+    let moveTimeout = null;
+
+    function startCarMovement(route) {
+      if (!carDiv) {
+        carDiv = document.createElement('div');
+        carDiv.classList.add('car');
+        // El auto va dentro del grid-wrapper para que se posicione relativo a la cuadrícula
+        document.querySelector('.grid-wrapper').appendChild(carDiv);
+      }
+      path = route;
+      stepIndex = 0;
+      moveStep();
+    }
+
+    function moveStep() {
+      if (stepIndex >= path.length) {
+        alert("El auto llegó al destino");
+        return;
+      }
+      const pos = path[stepIndex];
+      // Posiciona el auto, teniendo en cuenta que cada celda es 10x10 px
+      carDiv.style.left = (pos.x * 10 + 1) + 'px';
+      carDiv.style.top = (pos.y * 10 + 2) + 'px';
+
+      stepIndex++;
+      moveTimeout = setTimeout(moveStep, 200 / carSpeed);
+    }
+
+    // Iniciar simulación: busca ruta y mueve auto
+    function startSimulation() {
+      if (roads.length === 0) {
+        alert("Por favor construye carreteras para que el auto pueda moverse.");
+        return;
+      }
+
+      const matrix = buildRoadMatrix();
+
+      // Punto inicial y destino (puedes cambiar el destino si quieres)
+      const start = { x: 0, y: 0 };
+      const end = { x: 15, y: 15 };
+
+      if (matrix[start.y][start.x] !== 1 || matrix[end.y][end.x] !== 1) {
+        alert("La posición de inicio o destino no está en carretera");
+        return;
+      }
+
+      const route = bfs(start, end, matrix);
+      if (route) {
+        startCarMovement(route);
+      } else {
+        alert("No se encontró ruta desde el inicio al destino");
+      }
+    }
+
+    // Inicializar
+    moneyDisplay.textContent = money;
+    createGrid();
+  </script>
+</body>
+</html>
+
